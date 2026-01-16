@@ -510,6 +510,10 @@ class FeishuUploader:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
+        success_count = 0
+        failed_count = 0
+        failed_files = []  # 记录失败的文件
+
         if files_override:
             files_to_upload = files_override
         else:
@@ -553,12 +557,11 @@ class FeishuUploader:
         
         print(f"✓ 文件夹创建完成\n")
         
+        if self.is_stopped():
+            return success_count, failed_count, failed_files
+
         # 阶段 2：并发上传文件
         print(f"=== 阶段 2: 并发上传文件 ({max_workers} 并发) ===\n")
-        
-        success_count = 0
-        failed_count = 0
-        failed_files = []  # 记录失败的文件
         
         # 创建速率限制器
         rate_limiter = RateLimiter(max_calls=5, period=1.0)
@@ -610,9 +613,8 @@ class FeishuUploader:
             # 处理完成的任务
             for i, future in enumerate(as_completed(future_to_file), 1):
                 if self.is_stopped():
-                    # 这里不需要显式 break，workers 会检查 is_stopped
-                    # 但为了 UI 更快响应，我们可以记录已停止
-                    pass
+                    print(f"\n[!] 任务由于用户指令已中断。已处理 {i-1}/{len(files_to_upload)} 个文件。")
+                    break
                     
                 file_info = future_to_file[future]
                 logical_path = file_info["logical_path"]

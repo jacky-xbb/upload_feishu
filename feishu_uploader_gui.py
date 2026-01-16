@@ -158,6 +158,11 @@ class FeishuUploaderGUI:
             self.stop_btn.configure(state='disabled')
 
     def run_uploader_task(self):
+        # 初始化结果变量
+        success_count = 0
+        failed_count = 0
+        failed_files = []
+        
         try:
             self.uploader = FeishuUploader(
                 self.app_id_var.get(),
@@ -184,8 +189,9 @@ class FeishuUploaderGUI:
             self.root.after(0, lambda: messagebox.showinfo("完成", f"上传完成!\n成功: {success_count}\n失败: {failed_count}"))
             
         except Exception as e:
-            print(f"\n发生严重错误: {e}")
-            self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
+            err_msg = str(e)
+            print(f"\n发生严重错误: {err_msg}")
+            self.root.after(0, lambda m=err_msg: messagebox.showerror("错误", m))
         finally:
             self.root.after(0, lambda: self.start_btn.configure(state='normal'))
             self.root.after(0, lambda: self.stop_btn.configure(state='disabled'))
