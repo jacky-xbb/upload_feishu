@@ -12,10 +12,12 @@ import json
 import time
 from pathlib import Path
 from typing import List, Tuple, Dict, Any
-from threading import Lock
+from threading import Lock, Event
 import lark_oapi as lark
 from lark_oapi.api.drive.v1 import *
 from dotenv import load_dotenv
+import requests
+from requests_toolbelt import MultipartEncoder
 
 
 class RateLimiter:
@@ -50,7 +52,7 @@ class RateLimiter:
 class FeishuUploader:
     """飞书文件上传器"""
     
-    def __init__(self, app_id: str, app_secret: str, parent_node: str, history_file: str = ".upload_history.json"):
+    def __init__(self, app_id: str, app_secret: str, parent_node: str, history_file: str = ".upload_history.json", skip_proxy: bool = False):
         """
         初始化上传器
         
@@ -59,11 +61,22 @@ class FeishuUploader:
             app_secret: 飞书应用密钥
             parent_node: 目标文件夹 Token
             history_file: 本地历史记录文件路径
+            skip_proxy: 是否跳过系统代理
         """
         self.app_id = app_id
         self.app_secret = app_secret
         self.parent_node = parent_node
         self.history_file = Path(history_file)
+        self.skip_proxy = skip_proxy
+        
+        # 如果跳过代理，设置环境变量影响所有库（包括 lark-oapi 和 requests）
+        if skip_proxy:
+            os.environ["no_proxy"] = "*"
+            os.environ["http_proxy"] = ""
+            os.environ["https_proxy"] = ""
+            os.environ["HTTP_PROXY"] = ""
+            os.environ["HTTPS_PROXY"] = ""
+
         self.client = lark.Client.builder() \
             .app_id(app_id) \
             .app_secret(app_secret) \
@@ -77,6 +90,16 @@ class FeishuUploader:
         self.token_lock = Lock()
         # 历史记录锁（用于并发安全）
         self.history_lock = Lock()
+        # 停止信号
+        self._stop_event = Event()
+
+    def stop(self):
+        """发送停止信号"""
+        self._stop_event.set()
+
+    def is_stopped(self) -> bool:
+        """检查是否已收到停止信号"""
+        return self._stop_event.is_set()
 
     def load_history(self) -> Dict[str, str]:
         """加载已上传文件的历史记录"""
@@ -107,9 +130,14 @@ class FeishuUploader:
     
     def _refresh_token(self):
         """获取或刷新 tenant_access_token"""
-        import requests
         auth_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-        response = requests.post(auth_url, json={
+        
+        # 使用 Session 以支持控制代理
+        session = requests.Session()
+        if self.skip_proxy:
+            session.trust_env = False
+            
+        response = session.post(auth_url, json={
             "app_id": self.app_id,
             "app_secret": self.app_secret
         })
@@ -321,9 +349,6 @@ class FeishuUploader:
         上传文件到指定的飞书节点（使用 requests 直接调用 API）
         """
         try:
-            import requests
-            from requests_toolbelt import MultipartEncoder
-            
             # 使用缓存的 token
             token = self._get_token()
             
@@ -345,7 +370,12 @@ class FeishuUploader:
                 'Content-Type': multi_form.content_type
             }
             
-            response = requests.post(url, headers=headers, data=multi_form)
+            # 使用 Session 以支持控制代理
+            session = requests.Session()
+            if self.skip_proxy:
+                session.trust_env = False
+                
+            response = session.post(url, headers=headers, data=multi_form)
             result = response.json()
             
             if result.get("code") == 0:
@@ -421,6 +451,10 @@ class FeishuUploader:
         failed_files = []  # 记录失败的文件信息
         
         for i, info in enumerate(files_to_upload, 1):
+            if self.is_stopped():
+                print("\n[!] 收到停止任务指令，正在退出...")
+                break
+                
             local_path = info["local_path"]
             feishu_dir = info["feishu_dir"]
             file_name = info["file_name"]
@@ -510,6 +544,8 @@ class FeishuUploader:
         print(f"需要创建 {len(unique_dirs)} 个文件夹...")
         
         for feishu_dir in unique_dirs:
+            if self.is_stopped():
+                break
             try:
                 self.ensure_path_exists(feishu_dir)
             except Exception as e:
@@ -529,6 +565,9 @@ class FeishuUploader:
         
         def upload_single_file(info: Dict) -> Tuple[bool, str]:
             """上传单个文件（带速率限制）"""
+            if self.is_stopped():
+                return False, f"{info['logical_path']} -> 跳过 (已停止)"
+                
             local_path = info["local_path"]
             file_name = info["file_name"]
             feishu_dir = info["feishu_dir"]
@@ -570,6 +609,11 @@ class FeishuUploader:
             
             # 处理完成的任务
             for i, future in enumerate(as_completed(future_to_file), 1):
+                if self.is_stopped():
+                    # 这里不需要显式 break，workers 会检查 is_stopped
+                    # 但为了 UI 更快响应，我们可以记录已停止
+                    pass
+                    
                 file_info = future_to_file[future]
                 logical_path = file_info["logical_path"]
                 
@@ -620,6 +664,7 @@ def main():
         print("  --force        强制上传所有文件，忽略历史记录")
         print("  --concurrent   启用并发上传（5 并发，提升 70-80% 性能）")
         print("  --retry        仅重试上次失败的文件 (从 failed_uploads.json 读取)")
+        print("  --skip-proxy   禁用系统代理（解决 Windows 下的 407 错误）")
         sys.exit(1)
     
     root_dir = sys.argv[1]
@@ -627,10 +672,11 @@ def main():
     force = "--force" in sys.argv
     concurrent = "--concurrent" in sys.argv
     retry = "--retry" in sys.argv
+    skip_proxy = "--skip-proxy" in sys.argv
     failed_json = Path("failed_uploads.json")
     
     # 创建上传器
-    uploader = FeishuUploader(app_id, app_secret, parent_node)
+    uploader = FeishuUploader(app_id, app_secret, parent_node, skip_proxy=skip_proxy)
     
     # 确定待上传文件列表
     if retry:

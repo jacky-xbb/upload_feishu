@@ -99,11 +99,19 @@ class FeishuUploaderGUI:
         self.concurrent_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(options_frame, text="并发上传 (5)", variable=self.concurrent_var).pack(side=tk.LEFT, padx=10)
 
+        self.skip_proxy_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(options_frame, text="禁用系统代理 (解决407错误)", variable=self.skip_proxy_var).pack(side=tk.LEFT, padx=10)
+
         # 控制按钮
         control_frame = ttk.Frame(main_frame, padding="10")
         control_frame.pack(fill=tk.X)
         self.start_btn = ttk.Button(control_frame, text="开始上传", command=self.start_upload)
-        self.start_btn.pack(pady=10)
+        self.start_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.stop_btn = ttk.Button(control_frame, text="停止上传", command=self.stop_upload, state='disabled')
+        self.stop_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.uploader = None
 
         # 日志区域
         log_frame = ttk.LabelFrame(main_frame, text="运行日志", padding="5")
@@ -120,11 +128,13 @@ class FeishuUploaderGUI:
         self.app_id_var.set(os.getenv("FEISHU_APP_ID", ""))
         self.app_secret_var.set(os.getenv("FEISHU_APP_SECRET", ""))
         self.parent_node_var.set(os.getenv("FEISHU_PARENT_NODE", ""))
+        self.skip_proxy_var.set(os.getenv("SKIP_PROXY", "False") == "True")
 
     def save_settings(self):
         set_key(str(self.env_path), "FEISHU_APP_ID", self.app_id_var.get())
         set_key(str(self.env_path), "FEISHU_APP_SECRET", self.app_secret_var.get())
         set_key(str(self.env_path), "FEISHU_PARENT_NODE", self.parent_node_var.get())
+        set_key(str(self.env_path), "SKIP_PROXY", str(self.skip_proxy_var.get()))
 
     def start_upload(self):
         # 验证输入
@@ -134,19 +144,28 @@ class FeishuUploaderGUI:
 
         self.save_settings()
         self.start_btn.configure(state='disabled')
+        self.stop_btn.configure(state='normal')
         
         # 开启线程执行任务
         thread = threading.Thread(target=self.run_uploader_task)
         thread.daemon = True
         thread.start()
 
+    def stop_upload(self):
+        if self.uploader:
+            self.uploader.stop()
+            print("\n[!] 正在发送停止信号...")
+            self.stop_btn.configure(state='disabled')
+
     def run_uploader_task(self):
         try:
-            uploader = FeishuUploader(
+            self.uploader = FeishuUploader(
                 self.app_id_var.get(),
                 self.app_secret_var.get(),
-                self.parent_node_var.get()
+                self.parent_node_var.get(),
+                skip_proxy=self.skip_proxy_var.get()
             )
+            uploader = self.uploader
             
             root_dir = self.root_dir_var.get()
             dry_run = self.dry_run_var.get()
@@ -169,6 +188,8 @@ class FeishuUploaderGUI:
             self.root.after(0, lambda: messagebox.showerror("错误", str(e)))
         finally:
             self.root.after(0, lambda: self.start_btn.configure(state='normal'))
+            self.root.after(0, lambda: self.stop_btn.configure(state='disabled'))
+            self.uploader = None
 
 if __name__ == "__main__":
     root = tk.Tk()

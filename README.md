@@ -127,6 +127,43 @@ python feishu_uploader.py /Users/bxb/Projects --concurrent --retry
 python feishu_uploader.py /Users/bxb/Projects --concurrent --force
 ```
 
+---
+
+## 构建可执行程序 (macOS)
+
+如果你需要将工具打包成独立的 Mac 应用程序 (.app)，请按照以下步骤操作：
+
+### 1. 安装 PyInstaller
+
+在你的 Python 环境中安装打包工具：
+
+```bash
+pip install pyinstaller
+```
+
+### 2. 执行构建
+
+使用项目中已有的配置文件进行构建：
+
+```bash
+pyinstaller 飞书上传工具.spec --noconfirm
+```
+
+### 3. 获取结果
+
+构建完成后，在项目根目录的 **`dist/`** 文件夹中可以找到 **`飞书上传工具.app`**。
+
+### 4. 首次运行说明
+
+由于未经过开发者签名，首次打开时：
+
+1. **请勿** 直接双击（会提示身份不明的开发者）。
+2. **右键点击** `飞书上传工具.app`，选择 **“打开”**。
+3. 在弹出的对话框中再次点击 **“打开”**。
+4. 之后即可正常双击使用。
+
+---
+
 ## 目录结构示例
 
 ```

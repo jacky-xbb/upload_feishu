@@ -46,3 +46,8 @@ failed_uploads.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+log.txt
+gui_log.txt
