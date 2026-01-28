@@ -52,7 +52,7 @@ class RateLimiter:
 class FeishuUploader:
     """飞书文件上传器"""
     
-    def __init__(self, app_id: str, app_secret: str, parent_node: str, history_file: str = ".upload_history.json", skip_proxy: bool = False):
+    def __init__(self, app_id: str, app_secret: str, parent_node: str, history_file: str = ".upload_history.json", skip_proxy: bool = False, proxy_url: str = None):
         """
         初始化上传器
         
@@ -62,6 +62,7 @@ class FeishuUploader:
             parent_node: 目标文件夹 Token
             history_file: 本地历史记录文件路径
             skip_proxy: 是否跳过系统代理
+            proxy_url: 代理服务器地址 (例如 http://127.0.0.1:3128)
         """
         self.app_id = app_id
         self.app_secret = app_secret
@@ -69,13 +70,20 @@ class FeishuUploader:
         self.history_file = Path(history_file)
         self.skip_proxy = skip_proxy
         
-        # 如果跳过代理，设置环境变量影响所有库（包括 lark-oapi 和 requests）
+        # 如果跳过代理，清空相关环境变量
         if skip_proxy:
             os.environ["no_proxy"] = "*"
             os.environ["http_proxy"] = ""
             os.environ["https_proxy"] = ""
             os.environ["HTTP_PROXY"] = ""
             os.environ["HTTPS_PROXY"] = ""
+        # 如果指定了特定代理，设置环境变量（影响所有使用的库）
+        elif proxy_url:
+            os.environ["http_proxy"] = proxy_url
+            os.environ["https_proxy"] = proxy_url
+            os.environ["HTTP_PROXY"] = proxy_url
+            os.environ["HTTPS_PROXY"] = proxy_url
+            print(f"代理设置: {proxy_url}")
 
         self.client = lark.Client.builder() \
             .app_id(app_id) \
@@ -648,6 +656,12 @@ def main():
     app_id = os.getenv("FEISHU_APP_ID")
     app_secret = os.getenv("FEISHU_APP_SECRET")
     parent_node = os.getenv("FEISHU_PARENT_NODE")
+    proxy_url = os.getenv("PROXY_URL")
+    proxy_port = os.getenv("PROXY_PORT")
+    
+    # 如果只有端口没有完整的 URL，构造本地代理 URL
+    if not proxy_url and proxy_port:
+        proxy_url = f"http://127.0.0.1:{proxy_port}"
     
     # 检查必需的环境变量
     if not all([app_id, app_secret, parent_node]):
@@ -678,7 +692,7 @@ def main():
     failed_json = Path("failed_uploads.json")
     
     # 创建上传器
-    uploader = FeishuUploader(app_id, app_secret, parent_node, skip_proxy=skip_proxy)
+    uploader = FeishuUploader(app_id, app_secret, parent_node, skip_proxy=skip_proxy, proxy_url=proxy_url)
     
     # 确定待上传文件列表
     if retry:

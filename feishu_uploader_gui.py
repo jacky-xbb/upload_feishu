@@ -77,6 +77,12 @@ class FeishuUploaderGUI:
         self.parent_node_var = tk.StringVar()
         ttk.Entry(settings_frame, textvariable=self.parent_node_var, width=50).grid(row=2, column=1, sticky=tk.W, padx=5)
 
+        # PROXY URL
+        ttk.Label(settings_frame, text="代理 URL:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.proxy_url_var = tk.StringVar()
+        ttk.Entry(settings_frame, textvariable=self.proxy_url_var, width=50).grid(row=3, column=1, sticky=tk.W, padx=5)
+        ttk.Label(settings_frame, text="(例如 http://127.0.0.1:3128)", foreground="gray").grid(row=3, column=2, sticky=tk.W)
+
         # 目录选择
         path_frame = ttk.LabelFrame(main_frame, text="上传目标", padding="10")
         path_frame.pack(fill=tk.X, pady=5)
@@ -128,12 +134,14 @@ class FeishuUploaderGUI:
         self.app_id_var.set(os.getenv("FEISHU_APP_ID", ""))
         self.app_secret_var.set(os.getenv("FEISHU_APP_SECRET", ""))
         self.parent_node_var.set(os.getenv("FEISHU_PARENT_NODE", ""))
+        self.proxy_url_var.set(os.getenv("PROXY_URL", ""))
         self.skip_proxy_var.set(os.getenv("SKIP_PROXY", "False") == "True")
 
     def save_settings(self):
         set_key(str(self.env_path), "FEISHU_APP_ID", self.app_id_var.get())
         set_key(str(self.env_path), "FEISHU_APP_SECRET", self.app_secret_var.get())
         set_key(str(self.env_path), "FEISHU_PARENT_NODE", self.parent_node_var.get())
+        set_key(str(self.env_path), "PROXY_URL", self.proxy_url_var.get())
         set_key(str(self.env_path), "SKIP_PROXY", str(self.skip_proxy_var.get()))
 
     def start_upload(self):
@@ -164,11 +172,17 @@ class FeishuUploaderGUI:
         failed_files = []
         
         try:
+            proxy_url = self.proxy_url_var.get()
+            proxy_port = os.getenv("PROXY_PORT", "")
+            if not proxy_url and proxy_port:
+                proxy_url = f"http://127.0.0.1:{proxy_port}"
+
             self.uploader = FeishuUploader(
                 self.app_id_var.get(),
                 self.app_secret_var.get(),
                 self.parent_node_var.get(),
-                skip_proxy=self.skip_proxy_var.get()
+                skip_proxy=self.skip_proxy_var.get(),
+                proxy_url=proxy_url
             )
             uploader = self.uploader
             
