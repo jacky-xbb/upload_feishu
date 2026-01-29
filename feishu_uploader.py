@@ -352,26 +352,26 @@ class FeishuUploader:
         
         return publish_folders
     
-    def get_files_to_upload(self, publish_folders: List[Path]) -> List[Dict]:
+    def get_files_to_upload(self, publish_folders: List[Path], root_path: Path) -> List[Dict]:
         """
         获取所有需要上传的文件及其元数据
         
+        Args:
+            publish_folders: 扫描到的 00_Publish 文件夹列表
+            root_path: 扫描的根目录（用于计算相对路径）
+            
         Returns:
             包含文件信息的字典列表
         """
         files_to_upload = []
         
         for folder in publish_folders:
-            # 获取 00_Publish 的父文件夹名称（作为飞书中的一级目录）
-            project_name = folder.parent.name
+            # 获取 00_Publish 相对于根目录的完整路径（例如 "03_Reg_WI/02_in working Reg WI/ProjectA/00_Publish"）
+            feishu_dir = str(folder.relative_to(root_path)).replace("\\", "/")
             
             # 遍历 00_Publish 中的所有文件（根据需求，00_Publish 下不再递归）
             for file_path in folder.iterdir():
                 if file_path.is_file():
-                    # 飞书端的逻辑路径：ProjectName / 00_Publish
-                    publish_folder_name = folder.name  # 00_Publish
-                    feishu_dir = f"{project_name}/{publish_folder_name}"
-                    
                     # 文件名保持原始
                     file_name = file_path.name
                     # 唯一标识符用于历史记录对比：完整的虚拟路径
@@ -467,7 +467,7 @@ class FeishuUploader:
             print(f"\n共找到 {len(publish_folders)} 个发布目录\n")
             
             # 获取所有需要上传的文件
-            files_to_upload = self.get_files_to_upload(publish_folders)
+            files_to_upload = self.get_files_to_upload(publish_folders, root_path)
             
             if not files_to_upload:
                 print("未找到任何需要上传的文件")
@@ -571,7 +571,7 @@ class FeishuUploader:
             print(f"\n共找到 {len(publish_folders)} 个发布目录\n")
             
             # 收集所有文件信息
-            files_to_upload = self.get_files_to_upload(publish_folders)
+            files_to_upload = self.get_files_to_upload(publish_folders, root_path)
             print(f"共找到 {len(files_to_upload)} 个文件待上传\n")
             
             if dry_run:
