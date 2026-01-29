@@ -365,18 +365,12 @@ class FeishuUploader:
             # 获取 00_Publish 的父文件夹名称（作为飞书中的一级目录）
             project_name = folder.parent.name
             
-            # 遍历 00_Publish 中的所有文件
-            for file_path in folder.rglob("*"):
+            # 遍历 00_Publish 中的所有文件（根据需求，00_Publish 下不再递归）
+            for file_path in folder.iterdir():
                 if file_path.is_file():
-                    # 计算相对于 00_Publish 的路径
-                    relative_path_in_publish = file_path.relative_to(folder)
-                    
-                    # 飞书端的逻辑路径：ProjectName / 00_Publish / 子目录(如果有)
-                    # 保留 00_Publish 这一层
+                    # 飞书端的逻辑路径：ProjectName / 00_Publish
                     publish_folder_name = folder.name  # 00_Publish
                     feishu_dir = f"{project_name}/{publish_folder_name}"
-                    if str(relative_path_in_publish.parent) != ".":
-                        feishu_dir = f"{project_name}/{publish_folder_name}/{relative_path_in_publish.parent}"
                     
                     # 文件名保持原始
                     file_name = file_path.name
