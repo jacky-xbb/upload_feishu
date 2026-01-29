@@ -293,22 +293,62 @@ class FeishuUploader:
         """
         查找所有 00_Publish 文件夹
         
+        根据目录结构规律：
+        - 01_BCG: 直接查找 00_Publish
+        - 02_Policy: 只遍历 02_GPS 和 03_EPS 下的所有子目录
+        - 03_Reg_WI: 只遍历 02_in working Reg WI 下的所有子目录
+        
         Args:
-            root_dir: 根目录路径
+            root_dir: 根目录路径 (例如: Z:\PM\01 Doc mgt)
             
         Returns:
             包含所有 00_Publish 文件夹路径的列表
         """
         publish_folders = []
         
-        # 遍历根目录下的所有子目录
-        for item in root_dir.iterdir():
-            if item.is_dir():
-                # 在每个子目录中查找 00_Publish
-                publish_path = item / "00_Publish"
-                if publish_path.exists() and publish_path.is_dir():
-                    publish_folders.append(publish_path)
-                    print(f"✓ 找到发布目录: {publish_path}")
+        # 辅助函数：递归查找 00_Publish
+        def find_publish_recursive(folder: Path) -> List[Path]:
+            """递归查找所有 00_Publish 目录"""
+            results = []
+            try:
+                for item in folder.iterdir():
+                    if item.is_dir():
+                        if item.name == "00_Publish":
+                            results.append(item)
+                            print(f"✓ 找到发布目录: {item}")
+                        else:
+                            # 继续递归查找
+                            results.extend(find_publish_recursive(item))
+            except PermissionError as e:
+                print(f"⚠ 权限不足，跳过目录: {folder}")
+            except Exception as e:
+                print(f"⚠ 访问目录时出错: {folder} -> {e}")
+            return results
+        
+        # 1. 处理 01_BCG - 直接获取
+        bcg_dir = root_dir / "01_BCG"
+        if bcg_dir.exists() and bcg_dir.is_dir():
+            bcg_publish = bcg_dir / "00_Publish"
+            if bcg_publish.exists() and bcg_publish.is_dir():
+                publish_folders.append(bcg_publish)
+                print(f"✓ 找到发布目录: {bcg_publish}")
+        
+        # 2. 处理 02_Policy - 只遍历 02_GPS 和 03_EPS
+        policy_dir = root_dir / "02_Policy"
+        if policy_dir.exists() and policy_dir.is_dir():
+            for sub_name in ["02_GPS", "03_EPS"]:
+                sub_dir = policy_dir / sub_name
+                if sub_dir.exists() and sub_dir.is_dir():
+                    print(f"正在扫描: {sub_dir}")
+                    publish_folders.extend(find_publish_recursive(sub_dir))
+        
+        # 3. 处理 03_Reg_WI - 只遍历 02_in working Reg WI
+        reg_wi_dir = root_dir / "03_Reg_WI"
+        if reg_wi_dir.exists() and reg_wi_dir.is_dir():
+            working_dir = reg_wi_dir / "02_in working Reg WI"
+            if working_dir.exists() and working_dir.is_dir():
+                print(f"正在扫描: {working_dir}")
+                publish_folders.extend(find_publish_recursive(working_dir))
         
         return publish_folders
     

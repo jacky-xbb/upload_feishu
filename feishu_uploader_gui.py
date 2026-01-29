@@ -8,6 +8,7 @@ import os
 import sys
 import threading
 import queue
+import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 from pathlib import Path
@@ -108,6 +109,10 @@ class FeishuUploaderGUI:
         self.skip_proxy_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(options_frame, text="禁用系统代理 (解决407错误)", variable=self.skip_proxy_var).pack(side=tk.LEFT, padx=10)
 
+        self.retry_var = tk.BooleanVar(value=False)
+        self.retry_cb = ttk.Checkbutton(options_frame, text="重试失败项", variable=self.retry_var)
+        self.retry_cb.pack(side=tk.LEFT, padx=10)
+
         # 控制按钮
         control_frame = ttk.Frame(main_frame, padding="10")
         control_frame.pack(fill=tk.X)
@@ -190,16 +195,53 @@ class FeishuUploaderGUI:
             dry_run = self.dry_run_var.get()
             force = self.force_var.get()
             concurrent = self.concurrent_var.get()
+            retry = self.retry_var.get()
             
+            failed_json = Path("failed_uploads.json")
+            retry_files = None
+            
+            # 如果选择了重试模式
+            if retry:
+                if not failed_json.exists():
+                    self.root.after(0, lambda: messagebox.showwarning("提示", "找不到 failed_uploads.json 文件，无法重试"))
+                    self.root.after(0, lambda: self.retry_var.set(False))
+                    return
+                
+                with open(failed_json, 'r', encoding='utf-8') as f:
+                    retry_files = json.load(f)
+                    for f_info in retry_files:
+                        f_info["local_path"] = Path(f_info["local_path"])
+                print(f"模式: 重试模式 (共 {len(retry_files)} 个之前失败的任务)")
+
             if concurrent:
-                success_count, failed_count, failed_files = uploader.upload_all_concurrent(root_dir, dry_run, force)
+                success_count, failed_count, failed_files = uploader.upload_all_concurrent(root_dir, dry_run, force, files_override=retry_files)
             else:
-                success_count, failed_count, failed_files = uploader.upload_all(root_dir, dry_run, force)
+                success_count, failed_count, failed_files = uploader.upload_all(root_dir, dry_run, force, files_override=retry_files)
             
             print(f"\n任务结束: 成功 {success_count}, 失败 {failed_count}")
-            if failed_count > 0:
-                print("请检查本地目录下的 failed_uploads.json 以获取详细信息。")
             
+            failed_json = Path("failed_uploads.json")
+            if failed_count > 0:
+                # 将 Path 对象转换为字符串以便 JSON 序列化
+                serializable_failed = []
+                for f_info in failed_files:
+                    f_copy = f_info.copy()
+                    f_copy["local_path"] = str(f_copy["local_path"])
+                    serializable_failed.append(f_copy)
+                    
+                with open(failed_json, 'w', encoding='utf-8') as f:
+                    json.dump(serializable_failed, f, indent=4, ensure_ascii=False)
+                print(f"✓ 失败清单已保存至: {failed_json}")
+                print("请检查该文件以获取详细信息。")
+            else:
+                if failed_json.exists():
+                    try:
+                        failed_json.unlink()
+                    except:
+                        pass
+                # 任务成功完成后，自动取消“重试项”勾选
+                self.root.after(0, lambda: self.retry_var.set(False))
+
             self.root.after(0, lambda: messagebox.showinfo("完成", f"上传完成!\n成功: {success_count}\n失败: {failed_count}"))
             
         except Exception as e:
