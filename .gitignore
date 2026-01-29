@@ -28,6 +28,7 @@ ENV/
 
 # Configuration and Credentials
 .env
+.env.bak
 .env.local
 .env.development.local
 .env.test.local
@@ -51,3 +52,5 @@ Thumbs.db
 *.log
 log.txt
 gui_log.txt
+test_data/
+

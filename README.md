@@ -26,13 +26,11 @@ FEISHU_PARENT_NODE=目标文件夹Token
 ### 获取配置信息
 
 1. **应用 ID 和密钥**：
-
    - 访问 [飞书开放平台](https://open.feishu.cn/app)
    - 创建或选择一个应用
    - 在「凭证与基础信息」中获取 `App ID` 和 `App Secret`
 
 2. **文件夹 Token**：
-
    - 在飞书云文档中打开目标文件夹
    - 从 URL 中复制文件夹 Token（URL 最后一段字符串）
    - 例如：`https://example.feishu.cn/drive/folder/fldcnxxxxxx` 中的 `fldcnxxxxxx`
@@ -99,12 +97,70 @@ python feishu_uploader.py <目录路径> --concurrent --retry
 - 本地路径示例：`项目A/00_Publish/子目录/文件.pdf`
 - 飞书路径示例：`项目A/00_Publish/子目录/文件.pdf`
 
+### 目录扫描规则 (BSH 文档管理规范)
+
+工具会根据 BSH 文档管理规范，智能扫描特定目录下的 `00_Publish` 文件夹：
+
+#### 扫描策略
+
+假设根目录为 `Z:\PM\01 Doc mgt`：
+
+| 一级目录      | 扫描规则   | 说明                                         |
+| ------------- | ---------- | -------------------------------------------- |
+| **01_BCG**    | 直接扫描   | 直接查找 `01_BCG/00_Publish`                 |
+| **02_Policy** | 选择性递归 | 仅扫描 `02_GPS` 和 `03_EPS` 下的所有子目录   |
+| **03_Reg_WI** | 选择性递归 | 仅扫描 `02_in working Reg WI` 下的所有子目录 |
+
+#### 示例结构
+
+```
+Z:\PM\01 Doc mgt\
+├── 01_BCG\
+│   └── 00_Publish                    ← ✅ 会被扫描
+│
+├── 02_Policy\
+│   ├── 01_List Report
+│   │   └── 00_Publish                ← ❌ 不会被扫描
+│   ├── 02_GPS\
+│   │   └── GPS_1_xxx\
+│   │       └── 00_Publish            ← ✅ 会被扫描
+│   ├── 03_EPS\
+│   │   └── EPS_1_xxx\
+│   │       └── 00_Publish            ← ✅ 会被扫描
+│   └── 04_Shared info
+│       └── 00_Publish                ← ❌ 不会被扫描
+│
+└── 03_Reg_WI\
+    ├── 01_List Report
+    │   └── 00_Publish                ← ❌ 不会被扫描
+    ├── 02_in working Reg WI\
+    │   └── DS1_xxx\
+    │       └── China_R_xxx\
+    │           └── 00_Publish        ← ✅ 会被扫描
+    └── 03_Deleted Reg WI
+        └── 00_Publish                ← ❌ 不会被扫描
+```
+
+#### 测试扫描规则
+
+可以使用测试脚本验证扫描逻辑：
+
+```bash
+# 创建测试目录结构
+python3 scripts/create_test_structure.py
+
+# 演练模式查看扫描结果
+python3 feishu_uploader.py test_data --dry-run
+
+# 查看测试报告
+cat scripts/TEST_REPORT.md
+```
+
 ---
 
 ## 工作原理 (两阶段执行)
 
 1. **阶段 1：扫描与目录准备 (串行)**
-
    - 扫描所有 `00_Publish` 目录并计算文件哈希。
    - 串行创建飞书端目录结构（飞书 API 不支持并发创建目录）。
    - 缓存所有文件夹 Token。
